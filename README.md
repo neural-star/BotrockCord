@@ -33,8 +33,8 @@
 ## 🚀 Botの起動手順
 
 1. 🔑 **BotのTOKENを取得**してください
-   　![Bot Token取得手順1](https://github.com/neural-star/Start_a_minecraft_Bedrock_server_on_discord/blob/main/pictures/Bot_Button.png)
-   　![Bot Token取得手順2](https://github.com/neural-star/Start_a_minecraft_Bedrock_server_on_discord/blob/main/pictures/reset_token.png)
+   　![Bot Token取得手順1](pictures/Bot_Button.png)
+   　![Bot Token取得手順2](pictures/reset_token.png)
 
 2. `main.py` の `TOKEN` のところに **コピーしたTOKENを貼り付け** ます。
 
@@ -66,8 +66,8 @@
 * 📄 フォルダ内の `levelname.txt` の中に **ワールド名** が記載されています
 * 🖼️ `world_icon.jpeg` でワールドの見た目を確認できます
 
-　![フォルダ確認手順](https://github.com/neural-star/Start_a_minecraft_Bedrock_server_on_discord/blob/main/pictures/folder.png)
-　![ワールド確認例](https://github.com/neural-star/Start_a_minecraft_Bedrock_server_on_discord/blob/main/pictures/world_folder.png)
+　![フォルダ確認手順](pictures/folder.png)
+　![ワールド確認例](pictures/world_folder.png)
 
 ---
 
