@@ -3,10 +3,12 @@ import zipfile
 import shutil
 import json
 import os
+from pathlib import Path
 
 import discord
 from discord import app_commands
 from discord.ui import Button, View
+import yaml
 
 TOKEN = ""
 
@@ -14,9 +16,10 @@ ADMIN = None
 USER_IDs = [ADMIN]
 CHECK = True
 BASE_PATH = f"C:\\Users\\{os.getlogin()}\\AppData\\Local\\Packages\\Microsoft.MinecraftUWP_8wekyb3d8bbwe\\LocalState\\games\\com.mojang\\minecraftWorlds"
-world_path = "\\None"
+world_path = None
 OVERWRITE = False
 TIMEOUT = 300
+
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
@@ -46,41 +49,58 @@ class CheckButton(View):
         await interaction.response.send_message("❌ アドオンの追加をキャンセルしました", ephemeral=True)
         self.stop()
 
+def manifest(path):
+    manifest_path = os.path.join(path, "manifest.json")
+    if not os.path.exists(manifest_path):
+        return
+    
+    with open(manifest_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    
+    header = data["header"]
+    type = data["modules"][0]["type"]
+
+    if type == "data":
+        type = "behaviors"
+    elif type != "resources":
+        return
+    json_path = os.path.join(world_path, f"world_{type[:-1]}_packs.json")
+    
+    with open(json_path, "r") as f:
+        data = json.load(f)
+    
+    data.append({"pack_id": header["uuid"], "version": header["version"]})
+    
+    with open(json_path, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    
+    return (type, header["uuid"])
+
 async def add_addon(interaction: discord.Interaction,file: discord.Attachment, alert: bool = True):
-    await interaction.response.defer(ephemeral=True)
-    path = file.filename + ".zip"
+    await interaction.response.defer(thinking=True)
     await file.save(file.filename)
-    os.rename(file.filename, path)
+    addon = Path(file.filename)
+    #os.startfile(addon)
     
-    with zipfile.ZipFile(path, "r") as zip_ref:
+    info = []
+    new_path = addon.with_name(addon.stem + ".zip")
+    os.rename(addon, new_path)
+    if os.path.exists("path"):
+        shutil.rmtree("tmp")
+    
+    with zipfile.ZipFile(new_path, "r") as zip_ref:
         zip_ref.extractall("tmp")
-    os.remove(path)
-    e = False
     
+    info.append(manifest("tmp"))
     for sub in os.listdir("tmp"):
-        manifest_path = os.path.join("tmp", sub, "manifest.json")
-        if os.path.exists(manifest_path):
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            
-            resource_pack_path = os.path.join(world_path, "resource_packs", sub)
-            behavior_pack_path = os.path.join(world_path, "behavior_packs", sub)
-            if os.path.exists(resource_pack_path) and OVERWRITE:
-                shutil.rmtree(resource_pack_path)
-            if os.path.exists(behavior_pack_path) and OVERWRITE:
-                shutil.rmtree(behavior_pack_path)
-            try:
-                if data["modules"][0]["type"] == "resources":
-                    shutil.move(os.path.join("tmp", sub), resource_pack_path)
-                elif data["modules"][0]["type"] == "data":
-                    shutil.move(os.path.join("tmp", sub), behavior_pack_path)
-            except shutil.Error:
-                e = True
-                await interaction.followup.send(f"❌ このアドオンは既に追加されています", ephemeral=True)
-    if not e:
-        if alert:
-            await interaction.followup.send(f"✅ アドオンを追加しました", ephemeral=True)
+        sub_path = os.path.join("tmp", sub)
+        info.append(manifest(sub_path))
+        
     shutil.rmtree("tmp")
+    os.remove(new_path)
+    
+    await interaction.followup.send("✅ アドオンの追加が完了しました！", ephemeral=True)
+    with open("ADDON_INFO.json", "r") as f:
 
 @tree.command(name="setup", description="サーバーをセットアップします")
 async def setup(interaction: discord.Interaction,
@@ -116,20 +136,38 @@ async def setup(interaction: discord.Interaction,
 
 @tree.command(name="debug", description="デバッグ情報を表示します")
 async def debug(interaction: discord.Interaction):
-    await interaction.response.send_message(f"name: {os.path.basename(world_path)}\ncheck: {CHECK}\noverwrite: {OVERWRITE}\nadmin: {ADMIN}\nusers: {USER_IDs}\ntimeout: {TIMEOUT}",
-                                            ephemeral=True)
+    message = (
+        f"name: {os.path.basename(world_path)}\n"
+        f"check: {CHECK}\n"
+        f"overwrite: {OVERWRITE}\n"
+        f"admin: {ADMIN}\n"
+        f"users: {USER_IDs}\n"
+        f"timeout: {TIMEOUT}\n"
+        f"Behavior_List: {os.listdir(os.path.join(world_path, 'behavior_packs'))}\n"
+        f"Resource_List: {os.listdir(os.path.join(world_path, 'resource_packs'))}"
+    )
+
+    await interaction.response.send_message(message, ephemeral=True)
+
+@tree.command(name="del_addon", description="サーバーからアドオンを削除します")
+async def del_addon(interaction: discord.Interaction, name: str):
+    if not world_path:
+        await interaction.response.send_message("❌ ワールドが設定されていません。`/setup`コマンドでワールドを設定してください", ephemeral=True)
+        return
+    
+    
 
 @tree.command(name="addon", description="サーバーにアドオンを追加します")
 async def addon(interaction: discord.Interaction, file: discord.Attachment):
     name = file.filename
-    if not name.endswith((".mcaddon", ".mcpack", ".zip")):
+    if not name.endswith((".mcaddon", ".mcpack")):
         await interaction.response.send_message(
-            "❌ 無効なファイル形式です。`.mcaddon, .mcpack, .zip`のいずれかの拡張子のファイルをアップロードしてください",
+            "❌ 無効なファイル形式です。`.mcaddon, .mcpack`のどちらかの拡張子のファイルをアップロードしてください",
             ephemeral=True
         )
         return
 
-    if CHECK and interaction.user.id == ADMIN:
+    if CHECK and interaction.user.id != ADMIN:
         view = CheckButton(file)
         user = await client.fetch_user(ADMIN)
         await interaction.response.send_message(f"{user.mention}\n🛡️ 管理者の承認を待っています…",view=view)
