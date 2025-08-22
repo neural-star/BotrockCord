@@ -80,7 +80,7 @@ async def add_addon(interaction: discord.Interaction,file: discord.Attachment, a
     await interaction.response.defer(thinking=True)
     await file.save(file.filename)
     addon = Path(file.filename)
-    #os.startfile(addon)
+    os.startfile(addon)
     
     info = []
     new_path = addon.with_name(addon.stem + ".zip")
@@ -101,6 +101,20 @@ async def add_addon(interaction: discord.Interaction,file: discord.Attachment, a
     
     await interaction.followup.send("✅ アドオンの追加が完了しました！", ephemeral=True)
     with open("ADDON_INFO.json", "r") as f:
+        addon_info = json.load(f)
+    
+    for type, uuid in info:
+        if type is None:
+            continue
+        tmp = addon_info[file.filename]
+        if tmp is None:
+            tmp = []
+        if uuid not in tmp:
+            tmp.append((type, uuid))
+        #{"addon's name": [(type, uuid), ...]}
+    
+    with open("ADDON_INFO.json", "w") as f:
+        json.dump(addon_info, f, ensure_ascii=False, indent=4)
 
 @tree.command(name="setup", description="サーバーをセットアップします")
 async def setup(interaction: discord.Interaction,
@@ -136,6 +150,11 @@ async def setup(interaction: discord.Interaction,
 
 @tree.command(name="debug", description="デバッグ情報を表示します")
 async def debug(interaction: discord.Interaction):
+    with open("ADDON_INFO.json", "r") as f:
+        addon_info = json.load(f)
+    
+    names = [name for name in addon_info.keys()]
+
     message = (
         f"name: {os.path.basename(world_path)}\n"
         f"check: {CHECK}\n"
@@ -143,8 +162,7 @@ async def debug(interaction: discord.Interaction):
         f"admin: {ADMIN}\n"
         f"users: {USER_IDs}\n"
         f"timeout: {TIMEOUT}\n"
-        f"Behavior_List: {os.listdir(os.path.join(world_path, 'behavior_packs'))}\n"
-        f"Resource_List: {os.listdir(os.path.join(world_path, 'resource_packs'))}"
+        f"Addon_List: {names}"
     )
 
     await interaction.response.send_message(message, ephemeral=True)
@@ -155,7 +173,20 @@ async def del_addon(interaction: discord.Interaction, name: str):
         await interaction.response.send_message("❌ ワールドが設定されていません。`/setup`コマンドでワールドを設定してください", ephemeral=True)
         return
     
+    with open("ADDON_INFO.json", "r") as f:
+        addon_info = json.load(f)
     
+    for type, uuid in addon_info[name]:
+        json_path = os.path.join(world_path, f"world_{type[:-1]}_packs.json")
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        
+        data = [pack for pack in data if pack["pack_id"] != uuid]
+        
+        with open(json_path, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    
+    await interaction.response.send_message(f"✅ {name} をサーバーから削除しました", ephemeral=True)
 
 @tree.command(name="addon", description="サーバーにアドオンを追加します")
 async def addon(interaction: discord.Interaction, file: discord.Attachment):
